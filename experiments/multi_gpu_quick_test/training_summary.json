@@ -1,0 +1,7 @@
+{
+  "config": "configs/quick_test.yaml",
+  "final_step": 50,
+  "final_loss": 1.4137989282608032,
+  "num_gpus": 4,
+  "model_params": 13325824
+}

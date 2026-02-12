@@ -1,0 +1,36 @@
+model:
+  name: "tiny"
+
+training:
+  batch_size: 32
+  micro_batch_size: 8
+  gradient_accumulation_steps: 4
+  
+  learning_rate: 1.0e-3
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  grad_clip: 1.0
+  
+  max_steps: 50
+  log_every: 10
+
+data:
+  dataset_name: "wikitext"
+  dataset_config: "wikitext-2-raw-v1"  # FIXED: Added dataset config
+  max_samples: 1000  # Only use 1000 samples for quick test
+  tokenizer: "gpt2"
+  max_seq_len: 128
+  num_workers: 2
+
+distributed:
+  strategy: "ddp"
+  backend: "nccl"
+
+logging:
+  project: "distributed-llm-training"
+  run_name: "quick-test"
+  log_with: "none"
+
+compute:
+  seed: 42

@@ -1,0 +1,36 @@
+model:
+  name: "tiny"
+
+training:
+  batch_size: 128
+  micro_batch_size: 8
+  gradient_accumulation_steps: 4
+  
+  learning_rate: 5.0e-4
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  grad_clip: 1.0
+  
+  max_steps: 5000
+  log_every: 50
+  save_every: 1000
+
+data:
+  dataset_name: "wikitext"
+  dataset_config: "wikitext-103-raw-v1"  # Larger dataset
+  tokenizer: "gpt2"
+  max_seq_len: 512
+  num_workers: 4
+
+distributed:
+  strategy: "ddp"
+  backend: "nccl"
+
+logging:
+  project: "distributed-llm-training"
+  run_name: "tiny-5k-steps"
+  log_with: "none"
+
+compute:
+  seed: 42

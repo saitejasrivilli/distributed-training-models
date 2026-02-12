@@ -1,0 +1,44 @@
+model:
+  name: "tiny"
+  use_flash_attention: false
+  use_gradient_checkpointing: false
+
+training:
+  batch_size: 32
+  micro_batch_size: 4
+  gradient_accumulation_steps: 8
+  
+  learning_rate: 1.0e-3
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  grad_clip: 1.0
+  
+  warmup_steps: 100
+  max_steps: 1000
+  
+  mixed_precision: "no"
+  
+  save_every: 500
+  eval_every: 100
+  log_every: 10
+
+data:
+  dataset_name: "wikitext"
+  dataset_config: "wikitext-2-raw-v1"  # FIXED
+  max_samples: 5000  # Use subset for faster training
+  tokenizer: "gpt2"
+  max_seq_len: 512
+  num_workers: 2
+
+distributed:
+  strategy: "ddp"
+  backend: "nccl"
+
+logging:
+  project: "distributed-llm-training"
+  run_name: "test-tiny"
+  log_with: "none"
+
+compute:
+  seed: 42
