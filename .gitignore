@@ -49,3 +49,4 @@ tensorboard/
 # OS
 .DS_Store
 Thumbs.db
+experiments/*/checkpoints/*.pt
