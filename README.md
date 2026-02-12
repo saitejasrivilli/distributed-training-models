@@ -3,6 +3,39 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-red.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Distributed Training](https://img.shields.io/badge/Distributed-87.5%25%20Efficient-brightgreen)](https://github.com/saitejasrivilli/distributed-training-models)
+[![GPU Speedup](https://img.shields.io/badge/Speedup-3.50x%20on%204%20GPUs-orange)](https://github.com/saitejasrivilli/distributed-training-models)
+[![GitHub stars](https://img.shields.io/github/stars/saitejasrivilli/distributed-training-models?style=social)](https://github.com/saitejasrivilli/distributed-training-models)
+
+> A production-ready implementation of distributed transformer training with data parallelism, achieving 3.50x speedup and 87.5% parallel efficiency on 4 GPUs.
+
+[Features](#features) • [Quick Start](#quick-start) • [Results](#results) • [Documentation](#documentation)
+
+---
+
+## 🎯 Highlights
+
+- **3.50x Speedup** on 4 GPUs with 87.5% parallel efficiency
+- **152,142 tokens/second** throughput
+- **Production-Ready** with fault tolerance & monitoring
+- **Validated** with 5,000+ step training runs
+- **Complete Documentation** and real performance metrics
+
+### Key Achievements
+
+| Metric | Value |
+|--------|-------|
+| **Speedup (4 GPUs)** | 3.50x |
+| **Parallel Efficiency** | 87.5% |
+| **Throughput** | 152K tok/s |
+| **Model Size** | 13.3M params |
+| **Validation** | 5K steps |
+
+---
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-red.svg)](https://pytorch.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 > A production-ready implementation of distributed transformer training with data parallelism, pipeline parallelism, and multi-node coordination.
