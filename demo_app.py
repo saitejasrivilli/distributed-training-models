@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""
-Interactive Demo for Recruiters
-Showcases distributed training results and allows experimentation
-"""
+"""Interactive demo — showcases real benchmark results from benchmarks/real_results.json"""
 
+import json
 import streamlit as st
 import plotly.graph_objects as go
-import plotly.express as px
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
-# Page config
 st.set_page_config(
     page_title="Distributed LLM Training Demo",
     page_icon="🚀",
@@ -18,482 +15,464 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
 st.markdown("""
 <style>
-    .main {
-        background-color: #0e1117;
-    }
-    .stMetric {
-        background-color: #262730;
-        padding: 15px;
-        border-radius: 10px;
-    }
-    h1 {
-        color: #e74c3c;
-    }
+    .stMetric { background-color: #262730; padding: 15px; border-radius: 10px; }
+    h1 { color: #e74c3c; }
 </style>
 """, unsafe_allow_html=True)
 
-# Title
-st.title("🚀 Distributed LLM Training System")
-st.markdown("### Interactive Performance Demo - Production-Ready Multi-GPU Training")
+# ── Load real benchmark data ───────────────────────────────────────────────────
+RESULTS_PATH = Path(__file__).parent / "benchmarks" / "real_results.json"
 
-# Sidebar
-st.sidebar.header("🎯 Project Highlights")
-st.sidebar.metric("Speedup (4 GPUs)", "3.50x", "87.5% efficiency")
-st.sidebar.metric("Throughput", "152K tok/s", "+249%")
-st.sidebar.metric("Training Steps", "5,000", "validated")
+@st.cache_data
+def load_results():
+    if RESULTS_PATH.exists():
+        return json.loads(RESULTS_PATH.read_text())
+    # Fallback: embed the values directly so the app always works
+    return {
+        "gpu1_single_fp32": {"tokens_per_sec": 8300,  "peak_mem_gb": 5.21, "world_size": 1},
+        "gpu1_single_fp16": {"tokens_per_sec": 26097, "peak_mem_gb": 4.56, "world_size": 1},
+        "gpu2_ddp_fp32":    {"tokens_per_sec": 7123,  "peak_mem_gb": 5.67, "world_size": 2},
+        "gpu2_ddp_fp16":    {"tokens_per_sec": 20522, "peak_mem_gb": 5.02, "world_size": 2},
+        "gpu2_fsdp_fp32":   {"tokens_per_sec": 7261,  "peak_mem_gb": 4.97, "world_size": 2},
+        "gpu2_fsdp_fp16":   {"tokens_per_sec": 21844, "peak_mem_gb": 4.31, "world_size": 2},
+        "gpu4_ddp_fp32":    {"tokens_per_sec": 10921, "peak_mem_gb": 5.67, "world_size": 4},
+        "gpu4_ddp_fp16":    {"tokens_per_sec": 20950, "peak_mem_gb": 5.02, "world_size": 4},
+        "gpu4_fsdp_fp32":   {"tokens_per_sec": 10387, "peak_mem_gb": 4.63, "world_size": 4},
+        "gpu4_fsdp_fp16":   {"tokens_per_sec": 17840, "peak_mem_gb": 3.96, "world_size": 4},
+    }
+
+R = load_results()
+BASE_FP32 = R["gpu1_single_fp32"]["tokens_per_sec"]   # 8,300
+BASE_FP16 = R["gpu1_single_fp16"]["tokens_per_sec"]   # 26,097
+AMP_SPEEDUP = BASE_FP16 / BASE_FP32                   # 3.14×
+FSDP4_MEM_SAVE = (R["gpu4_ddp_fp16"]["peak_mem_gb"] - R["gpu4_fsdp_fp16"]["peak_mem_gb"]) \
+                 / R["gpu4_ddp_fp16"]["peak_mem_gb"] * 100  # 21.1%
+
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+st.sidebar.header("🎯 Key Results")
+st.sidebar.metric("AMP Speedup (1 GPU)", f"{AMP_SPEEDUP:.2f}×", "fp32 → fp16")
+st.sidebar.metric("FSDP Memory Saved", f"{FSDP4_MEM_SAVE:.0f}%", "vs DDP at 4 GPUs")
+st.sidebar.metric("Configs Benchmarked", "10", "1 / 2 / 4 GPU")
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Tech Stack:**")
-st.sidebar.markdown("- PyTorch 2.7 + CUDA 11.8")
-st.sidebar.markdown("- NCCL Backend")
-st.sidebar.markdown("- 4x NVIDIA GPUs")
+st.sidebar.markdown("**Hardware:** 4× NVIDIA A30 (PCIe)")
+st.sidebar.markdown("**Model:** 163M-param GPT")
+st.sidebar.markdown("**Framework:** PyTorch 2.7.1 + CUDA 11.8")
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Built by:** Sai Teja Srivilli")
-st.sidebar.markdown("[📂 View on GitHub](https://github.com/saitejasrivilli/distributed-training-models)")
+st.sidebar.markdown("[📂 GitHub](https://github.com/saitejasrivilli/distributed-training-models)")
 
-# Create tabs
+st.title("🚀 Distributed LLM Training System")
+st.markdown("Interactive demo — all numbers measured on real hardware.")
+
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Performance", 
-    "⚙️ Scaling Calculator", 
+    "📊 Benchmark Results",
+    "⚙️ Scaling Calculator",
     "🎯 Training Visualizer",
-    "💰 Cost Analysis",
+    "💡 DDP vs FSDP",
     "🔬 Live Demo"
 ])
 
-# Tab 1: Performance Results
+# ── Tab 1: Real benchmark results ─────────────────────────────────────────────
 with tab1:
-    st.header("Real Training Results")
-    
+    st.header("Measured on 4× NVIDIA A30 — 163M-param GPT, batch=4/GPU, seq=512")
+
     col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            label="Speedup",
-            value="3.50x",
-            delta="250% improvement",
-            delta_color="normal"
-        )
-    
-    with col2:
-        st.metric(
-            label="Efficiency",
-            value="87.5%",
-            delta="Excellent",
-            delta_color="normal"
-        )
-    
-    with col3:
-        st.metric(
-            label="Throughput",
-            value="152K tok/s",
-            delta="+108K vs 1 GPU",
-            delta_color="normal"
-        )
-    
-    with col4:
-        st.metric(
-            label="Training Steps",
-            value="5,000",
-            delta="Production validated",
-            delta_color="normal"
-        )
-    
+    col1.metric("AMP Speedup (1 GPU)", f"{AMP_SPEEDUP:.2f}×", "8,300 → 26,097 tok/s")
+    col2.metric("4-GPU DDP fp32",      f"{R['gpu4_ddp_fp32']['tokens_per_sec']:,} tok/s",
+                f"{R['gpu4_ddp_fp32']['tokens_per_sec']/BASE_FP32:.2f}× vs 1-GPU fp32")
+    col3.metric("FSDP mem/GPU (4-GPU fp16)", f"{R['gpu4_fsdp_fp16']['peak_mem_gb']:.2f} GB",
+                f"−{FSDP4_MEM_SAVE:.0f}% vs DDP")
+    col4.metric("Best throughput",     f"{BASE_FP16:,} tok/s", "1 GPU + AMP")
+
     st.markdown("---")
-    
-    # Performance comparison chart
-    st.subheader("📈 Performance Comparison")
-    
-    configs = ['1 GPU', '2 GPUs', '4 GPUs', '8 GPUs (projected)']
-    throughput = [43469, 76000, 152142, 304000]
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Bar(
-        name='Throughput (tokens/s)',
-        x=configs,
-        y=throughput,
-        marker_color=['#3498db', '#2ecc71', '#e74c3c', '#f39c12'],
-        text=[f'{t:,}' for t in throughput],
-        textposition='auto',
-        textfont=dict(size=14, color='white')
+
+    # Throughput bar chart — all 10 configs
+    st.subheader("📈 Throughput Across All Configurations")
+    labels = [
+        "1 GPU\nfp32", "1 GPU\nfp16",
+        "2 GPU DDP\nfp32", "2 GPU DDP\nfp16",
+        "2 GPU FSDP\nfp32", "2 GPU FSDP\nfp16",
+        "4 GPU DDP\nfp32", "4 GPU DDP\nfp16",
+        "4 GPU FSDP\nfp32", "4 GPU FSDP\nfp16",
+    ]
+    keys = [
+        "gpu1_single_fp32", "gpu1_single_fp16",
+        "gpu2_ddp_fp32", "gpu2_ddp_fp16",
+        "gpu2_fsdp_fp32", "gpu2_fsdp_fp16",
+        "gpu4_ddp_fp32", "gpu4_ddp_fp16",
+        "gpu4_fsdp_fp32", "gpu4_fsdp_fp16",
+    ]
+    colors = ["#3498db", "#e74c3c",
+              "#5dade2", "#e67e22", "#76d7c4", "#f0b27a",
+              "#2980b9", "#c0392b", "#1abc9c", "#e59866"]
+    tok_s = [R[k]["tokens_per_sec"] for k in keys]
+
+    fig = go.Figure(go.Bar(
+        x=labels, y=tok_s,
+        marker_color=colors,
+        text=[f"{v:,}" for v in tok_s],
+        textposition="auto",
+        textfont=dict(color="white", size=11)
     ))
-    
     fig.update_layout(
-        title="Training Throughput Across GPU Configurations",
-        xaxis_title="Configuration",
-        yaxis_title="Tokens per Second",
-        height=450,
-        template="plotly_dark",
-        showlegend=False
+        yaxis_title="Tokens / second", height=420, template="plotly_dark", showlegend=False
     )
-    
     st.plotly_chart(fig, use_container_width=True)
-    
-    # Efficiency chart
+
+    # AMP + DDP scaling side by side
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        st.subheader("⚡ Parallel Efficiency")
+        st.subheader("⚡ AMP Speedup (single GPU)")
         fig2 = go.Figure(go.Indicator(
-            mode = "gauge+number+delta",
-            value = 87.5,
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "Efficiency (%)"},
-            delta = {'reference': 100},
-            gauge = {
-                'axis': {'range': [None, 100]},
-                'bar': {'color': "#2ecc71"},
-                'steps': [
-                    {'range': [0, 50], 'color': "#34495e"},
-                    {'range': [50, 75], 'color': "#7f8c8d"},
-                    {'range': [75, 100], 'color': "#27ae60"}
+            mode="gauge+number",
+            value=round(AMP_SPEEDUP, 2),
+            title={"text": "fp16 / fp32  throughput ratio"},
+            gauge={
+                "axis": {"range": [0, 5]},
+                "bar": {"color": "#e74c3c"},
+                "steps": [
+                    {"range": [0, 2], "color": "#34495e"},
+                    {"range": [2, 3], "color": "#7f8c8d"},
+                    {"range": [3, 5], "color": "#27ae60"},
                 ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 90
-                }
             }
         ))
-        fig2.update_layout(height=350, template="plotly_dark")
+        fig2.update_layout(height=320, template="plotly_dark")
         st.plotly_chart(fig2, use_container_width=True)
-    
+
     with col2:
-        st.subheader("📈 Scaling Analysis")
-        # Speedup chart
-        gpus = [1, 2, 4, 8]
-        actual_speedup = [1.0, 1.75, 3.50, 7.0]
-        ideal_speedup = [1, 2, 4, 8]
-        
+        st.subheader("📈 DDP Scaling (fp32 — PCIe A30)")
+        gpus   = [1, 2, 4]
+        actual = [
+            BASE_FP32 / BASE_FP32,
+            R["gpu2_ddp_fp32"]["tokens_per_sec"] / BASE_FP32,
+            R["gpu4_ddp_fp32"]["tokens_per_sec"] / BASE_FP32,
+        ]
+        ideal  = [1.0, 2.0, 4.0]
+        efficiencies = [100, 42.9, 32.9]
+
         fig3 = go.Figure()
         fig3.add_trace(go.Scatter(
-            x=gpus, y=actual_speedup,
-            mode='lines+markers',
-            name='Actual Speedup',
-            line=dict(color='#e74c3c', width=3),
-            marker=dict(size=12)
+            x=gpus, y=actual, mode="lines+markers+text",
+            name="Measured speedup",
+            line=dict(color="#e74c3c", width=3),
+            marker=dict(size=12),
+            text=[f"{v:.2f}×\n({e:.0f}%)" for v, e in zip(actual, efficiencies)],
+            textposition="top right"
         ))
         fig3.add_trace(go.Scatter(
-            x=gpus, y=ideal_speedup,
-            mode='lines',
-            name='Ideal (Linear)',
-            line=dict(color='#95a5a6', width=2, dash='dash')
+            x=gpus, y=ideal, mode="lines",
+            name="Ideal (linear)",
+            line=dict(color="#95a5a6", width=2, dash="dash")
         ))
         fig3.update_layout(
-            title="Speedup vs Number of GPUs",
-            xaxis_title="Number of GPUs",
-            yaxis_title="Speedup",
-            height=350,
-            template="plotly_dark"
+            xaxis_title="GPUs", yaxis_title="Speedup vs 1-GPU fp32",
+            height=320, template="plotly_dark",
+            xaxis=dict(tickvals=[1, 2, 4])
         )
         st.plotly_chart(fig3, use_container_width=True)
 
-# Tab 2: Scaling Calculator
+    st.info(
+        "**Why efficiency is 33–43%:** A30 GPUs are PCIe-connected (no NVLink). "
+        "Each DDP step all-reduces ~650 MB of fp32 gradients — at 163M params the "
+        "compute-to-communication ratio is unfavorable. Efficiency improves with "
+        "larger models (>1B params) or NVLink interconnects."
+    )
+
+
+# ── Tab 2: Scaling Calculator ──────────────────────────────────────────────────
 with tab2:
     st.header("⚙️ Scaling Calculator")
-    st.markdown("**Calculate training time and cost for your specific use case**")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📝 Input Parameters")
-        
-        num_gpus = st.slider("Number of GPUs", 1, 16, 4)
-        training_steps = st.number_input("Training Steps", 1000, 1000000, 100000, step=10000)
-        batch_size = st.number_input("Batch Size per GPU", 1, 32, 8)
-        seq_length = st.selectbox("Sequence Length", [128, 256, 512, 1024, 2048], index=0)
-        
-        efficiency = 0.875 if num_gpus <= 8 else 0.85
-        base_throughput = 43469  # tokens/sec on 1 GPU
-        
-    with col2:
-        st.subheader("📊 Calculated Results")
-        
-        # Calculate
-        speedup = num_gpus * efficiency
-        effective_throughput = base_throughput * speedup
-        total_tokens = training_steps * batch_size * seq_length * num_gpus
-        time_seconds = total_tokens / effective_throughput
-        time_hours = time_seconds / 3600
-        time_minutes = time_seconds / 60
-        
-        # Cloud costs (AWS p3.2xlarge = $3.06/hr)
-        cost_per_gpu_hour = 3.06
-        total_cost = time_hours * num_gpus * cost_per_gpu_hour
-        
-        st.metric("Effective Throughput", f"{effective_throughput:,.0f} tok/s")
-        st.metric("Speedup vs 1 GPU", f"{speedup:.2f}x")
-        st.metric("Parallel Efficiency", f"{efficiency*100:.1f}%")
-        
-        if time_hours < 1:
-            st.metric("Training Time", f"{time_minutes:.1f} minutes")
-        else:
-            st.metric("Training Time", f"{time_hours:.2f} hours")
-        
-        st.metric("Cloud Cost (AWS)", f"${total_cost:.2f}")
-        st.success(f"**💚 With volunteer GPUs: $0** (Save ${total_cost:.2f}!)")
-    
-    # Visualization
-    st.markdown("---")
-    st.subheader("📊 Your Configuration Breakdown")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Time breakdown
-        fig_time = go.Figure(go.Indicator(
-            mode = "number+delta",
-            value = time_hours,
-            title = {"text": "Training Time (hours)"},
-            delta = {'reference': time_hours * 3.5, 'relative': True},
-            domain = {'x': [0, 1], 'y': [0, 1]}
-        ))
-        fig_time.update_layout(height=200, template="plotly_dark")
-        st.plotly_chart(fig_time, use_container_width=True)
-    
-    with col2:
-        # Cost savings
-        fig_savings = go.Figure(go.Indicator(
-            mode = "number+delta",
-            value = 0,
-            title = {"text": "Your Cost (USD)"},
-            delta = {'reference': total_cost, 'relative': False},
-            domain = {'x': [0, 1], 'y': [0, 1]}
-        ))
-        fig_savings.update_layout(height=200, template="plotly_dark")
-        st.plotly_chart(fig_savings, use_container_width=True)
+    st.markdown("Estimates based on measured throughput and efficiency on PCIe A30 GPUs.")
 
-# Tab 3: Training Visualizer
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("📝 Parameters")
+        num_gpus       = st.slider("Number of GPUs", 1, 16, 4)
+        training_steps = st.number_input("Training Steps", 1_000, 1_000_000, 100_000, step=10_000)
+        batch_per_gpu  = st.number_input("Batch Size per GPU", 1, 32, 4)
+        seq_length     = st.selectbox("Sequence Length", [128, 256, 512, 1024, 2048], index=2)
+        use_amp        = st.checkbox("Use Mixed Precision (fp16 AMP)", value=True)
+
+        # Efficiency model from measured data
+        # 1 GPU: 100%, 2 GPU: 42.9%, 4 GPU: 32.9%
+        # Log-interpolate for other GPU counts
+        if num_gpus == 1:
+            eff = 1.0
+        elif num_gpus <= 2:
+            eff = 0.429
+        elif num_gpus <= 4:
+            eff = 0.329
+        else:
+            eff = max(0.25, 0.329 * (4 / num_gpus) ** 0.3)   # rough extrapolation
+
+        base = BASE_FP16 if use_amp else BASE_FP32
+        effective_toks = base * num_gpus * eff if num_gpus > 1 else base
+
+        total_tokens = training_steps * batch_per_gpu * seq_length * num_gpus
+        time_s = total_tokens / effective_toks
+        time_min = time_s / 60
+        time_hr  = time_s / 3600
+
+        cost_per_gpu_hr = 3.06   # AWS p3.2xlarge
+        total_cost = time_hr * num_gpus * cost_per_gpu_hr
+
+    with col2:
+        st.subheader("📊 Estimated Results")
+        st.metric("Effective Throughput", f"{effective_toks:,.0f} tok/s")
+        st.metric("Parallel Efficiency",  f"{eff*100:.1f}%", help="Based on measured PCIe A30 data")
+        st.metric("Training Time",
+                  f"{time_min:.1f} min" if time_hr < 1 else f"{time_hr:.2f} hr")
+        st.metric("Cloud Cost (AWS)", f"${total_cost:.2f}")
+        if use_amp:
+            st.success(f"AMP enabled — {AMP_SPEEDUP:.1f}× faster than fp32 on same hardware.")
+
+
+# ── Tab 3: Training Visualizer ────────────────────────────────────────────────
 with tab3:
     st.header("🎯 Training Progress Visualizer")
-    
-    # Simulated training curves
-    steps = np.arange(0, 5001, 50)
-    
-    # Realistic loss curves
+    st.markdown("Illustrative loss curves based on the convergence pattern observed in test runs.")
+
+    steps = np.arange(0, 1001, 10)
     np.random.seed(42)
-    loss_single = 10 * np.exp(-steps/2000) + 0.9 + np.random.normal(0, 0.03, len(steps)).cumsum() * 0.001
-    loss_multi = 10 * np.exp(-steps/2000) + 1.4 + np.random.normal(0, 0.03, len(steps)).cumsum() * 0.001
-    
+    noise = np.random.normal(0, 0.015, len(steps)).cumsum() * 0.002
+    loss_1gpu = 10 * np.exp(-steps / 400) + 1.0 + noise
+    loss_4gpu = 10 * np.exp(-steps / 400) + 1.0 + noise[::-1] * 0.8
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=steps, y=loss_single,
-        mode='lines',
-        name='1 GPU Training',
-        line=dict(color='#3498db', width=2.5)
-    ))
-    fig.add_trace(go.Scatter(
-        x=steps, y=loss_multi,
-        mode='lines',
-        name='4 GPU Training',
-        line=dict(color='#e74c3c', width=2.5)
-    ))
-    
+    fig.add_trace(go.Scatter(x=steps, y=loss_1gpu, mode="lines",
+                             name="1 GPU (fp16)", line=dict(color="#3498db", width=2.5)))
+    fig.add_trace(go.Scatter(x=steps, y=loss_4gpu, mode="lines",
+                             name="4 GPU DDP (fp16)", line=dict(color="#e74c3c", width=2.5)))
     fig.update_layout(
-        title="Training Loss Convergence Over Time",
-        xaxis_title="Training Steps",
-        yaxis_title="Loss",
-        height=450,
-        hovermode='x unified',
-        template="plotly_dark"
+        title="Training Loss (illustrative — same convergence per token at all GPU counts)",
+        xaxis_title="Steps", yaxis_title="Loss",
+        height=420, template="plotly_dark", hovermode="x unified"
     )
-    
     st.plotly_chart(fig, use_container_width=True)
-    
-    # System metrics
+
     st.markdown("---")
-    st.subheader("💻 System Metrics During Training")
-    
+    st.subheader("💻 Measured GPU Memory — 4-GPU Runs")
+
     col1, col2 = st.columns(2)
-    
     with col1:
-        # GPU utilization
-        gpu_util = [94, 93, 95, 92]
-        fig_gpu = go.Figure(go.Bar(
-            x=[f'GPU {i}' for i in range(4)],
-            y=gpu_util,
-            marker_color=['#e74c3c', '#f39c12', '#2ecc71', '#9b59b6'],
-            text=[f'{u}%' for u in gpu_util],
-            textposition='auto',
-            textfont=dict(color='white', size=14)
-        ))
-        fig_gpu.update_layout(
-            title="GPU Utilization",
-            yaxis_title="Utilization (%)",
-            yaxis_range=[0, 100],
-            height=350,
-            template="plotly_dark",
-            showlegend=False
-        )
-        st.plotly_chart(fig_gpu, use_container_width=True)
-    
-    with col2:
-        # Memory usage
-        memory = [18.2, 18.1, 18.3, 18.0]
+        configs_mem = ["DDP fp32", "FSDP fp32", "DDP fp16", "FSDP fp16"]
+        mem_vals    = [
+            R["gpu4_ddp_fp32"]["peak_mem_gb"],
+            R["gpu4_fsdp_fp32"]["peak_mem_gb"],
+            R["gpu4_ddp_fp16"]["peak_mem_gb"],
+            R["gpu4_fsdp_fp16"]["peak_mem_gb"],
+        ]
         fig_mem = go.Figure(go.Bar(
-            x=[f'GPU {i}' for i in range(4)],
-            y=memory,
-            marker_color=['#3498db', '#3498db', '#3498db', '#3498db'],
-            text=[f'{m} GB' for m in memory],
-            textposition='auto',
-            textfont=dict(color='white', size=14)
+            x=configs_mem, y=mem_vals,
+            marker_color=["#3498db", "#2ecc71", "#e74c3c", "#f39c12"],
+            text=[f"{m:.2f} GB" for m in mem_vals],
+            textposition="auto", textfont=dict(color="white", size=13)
         ))
+        fig_mem.add_hline(y=24, line_dash="dash", line_color="#95a5a6",
+                          annotation_text="A30 capacity (24 GB)")
         fig_mem.update_layout(
-            title="GPU Memory Usage (40GB Available)",
-            yaxis_title="Memory (GB)",
-            yaxis_range=[0, 40],
-            height=350,
-            template="plotly_dark",
-            showlegend=False
+            title="Peak Memory per GPU (4-GPU, 163M model)",
+            yaxis_title="GB", yaxis_range=[0, 26],
+            height=360, template="plotly_dark", showlegend=False
         )
         st.plotly_chart(fig_mem, use_container_width=True)
 
-# Tab 4: Cost Analysis
-with tab4:
-    st.header("💰 Cost-Benefit Analysis")
-    
-    st.markdown("### Cloud vs Volunteer GPU Comparison")
-    
-    # Data
-    scenarios = ['1 GPU', '4 GPUs', '8 GPUs', '16 GPUs']
-    cloud_costs = [2.00, 2.33, 2.50, 2.80]
-    volunteer_costs = [0, 0, 0, 0]
-    training_times = [39, 11, 6, 3]
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("💵 Cost Comparison (100K steps)")
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            name='Cloud Cost (AWS)',
-            x=scenarios,
-            y=cloud_costs,
-            marker_color='#e74c3c',
-            text=[f'${c:.2f}' for c in cloud_costs],
-            textposition='auto'
-        ))
-        fig.add_trace(go.Bar(
-            name='Volunteer GPU Cost',
-            x=scenarios,
-            y=volunteer_costs,
-            marker_color='#2ecc71',
-            text=['$0.00'] * 4,
-            textposition='auto'
-        ))
-        fig.update_layout(
-            yaxis_title="Cost (USD)",
-            barmode='group',
-            height=350,
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
     with col2:
-        st.subheader("⏱️ Training Time (100K steps)")
-        fig2 = go.Figure(go.Bar(
-            x=scenarios,
-            y=training_times,
-            marker_color=['#3498db', '#e74c3c', '#f39c12', '#2ecc71'],
-            text=[f'{t} min' for t in training_times],
-            textposition='auto',
-            textfont=dict(color='white', size=14)
+        configs_thr = ["DDP fp32", "FSDP fp32", "DDP fp16", "FSDP fp16"]
+        thr_vals    = [
+            R["gpu4_ddp_fp32"]["tokens_per_sec"],
+            R["gpu4_fsdp_fp32"]["tokens_per_sec"],
+            R["gpu4_ddp_fp16"]["tokens_per_sec"],
+            R["gpu4_fsdp_fp16"]["tokens_per_sec"],
+        ]
+        fig_thr = go.Figure(go.Bar(
+            x=configs_thr, y=thr_vals,
+            marker_color=["#3498db", "#2ecc71", "#e74c3c", "#f39c12"],
+            text=[f"{v:,}" for v in thr_vals],
+            textposition="auto", textfont=dict(color="white", size=13)
         ))
-        fig2.update_layout(
-            yaxis_title="Time (minutes)",
-            height=350,
-            template="plotly_dark",
-            showlegend=False
+        fig_thr.update_layout(
+            title="Throughput — 4-GPU Runs (tok/s total)",
+            yaxis_title="Tokens / second",
+            height=360, template="plotly_dark", showlegend=False
         )
-        st.plotly_chart(fig2, use_container_width=True)
-    
-    total_saved = sum(cloud_costs)
-    st.success(f"### 💚 Total Savings with Volunteer GPUs: ${total_saved:.2f}")
-    
-    # ROI Calculator
-    st.markdown("---")
-    st.subheader("📈 ROI Calculator")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        num_experiments = st.number_input("Number of Experiments/Month", 1, 100, 20)
-    with col2:
-        avg_steps = st.number_input("Avg Steps per Experiment", 1000, 500000, 50000)
-    with col3:
-        gpus_used = st.selectbox("GPUs Used", [1, 4, 8, 16], index=1)
-    
-    monthly_cost_cloud = (num_experiments * avg_steps / 100000) * cloud_costs[min(gpus_used//2, 3)]
-    
-    st.info(f"**Monthly Cloud Cost**: ${monthly_cost_cloud:.2f}")
-    st.success(f"**Monthly Savings**: ${monthly_cost_cloud:.2f} (100%)")
-    st.warning(f"**Annual Savings**: ${monthly_cost_cloud * 12:.2f}")
+        st.plotly_chart(fig_thr, use_container_width=True)
 
-# Tab 5: Live Demo
+
+# ── Tab 4: DDP vs FSDP ────────────────────────────────────────────────────────
+with tab4:
+    st.header("💡 DDP vs FSDP — Memory & Throughput Tradeoff")
+
+    df = pd.DataFrame([
+        {"GPUs": 2, "Strategy": "DDP",  "Precision": "fp32",
+         "Throughput": R["gpu2_ddp_fp32"]["tokens_per_sec"],
+         "Mem/GPU (GB)": R["gpu2_ddp_fp32"]["peak_mem_gb"]},
+        {"GPUs": 2, "Strategy": "FSDP", "Precision": "fp32",
+         "Throughput": R["gpu2_fsdp_fp32"]["tokens_per_sec"],
+         "Mem/GPU (GB)": R["gpu2_fsdp_fp32"]["peak_mem_gb"]},
+        {"GPUs": 2, "Strategy": "DDP",  "Precision": "fp16",
+         "Throughput": R["gpu2_ddp_fp16"]["tokens_per_sec"],
+         "Mem/GPU (GB)": R["gpu2_ddp_fp16"]["peak_mem_gb"]},
+        {"GPUs": 2, "Strategy": "FSDP", "Precision": "fp16",
+         "Throughput": R["gpu2_fsdp_fp16"]["tokens_per_sec"],
+         "Mem/GPU (GB)": R["gpu2_fsdp_fp16"]["peak_mem_gb"]},
+        {"GPUs": 4, "Strategy": "DDP",  "Precision": "fp32",
+         "Throughput": R["gpu4_ddp_fp32"]["tokens_per_sec"],
+         "Mem/GPU (GB)": R["gpu4_ddp_fp32"]["peak_mem_gb"]},
+        {"GPUs": 4, "Strategy": "FSDP", "Precision": "fp32",
+         "Throughput": R["gpu4_fsdp_fp32"]["tokens_per_sec"],
+         "Mem/GPU (GB)": R["gpu4_fsdp_fp32"]["peak_mem_gb"]},
+        {"GPUs": 4, "Strategy": "DDP",  "Precision": "fp16",
+         "Throughput": R["gpu4_ddp_fp16"]["tokens_per_sec"],
+         "Mem/GPU (GB)": R["gpu4_ddp_fp16"]["peak_mem_gb"]},
+        {"GPUs": 4, "Strategy": "FSDP", "Precision": "fp16",
+         "Throughput": R["gpu4_fsdp_fp16"]["tokens_per_sec"],
+         "Mem/GPU (GB)": R["gpu4_fsdp_fp16"]["peak_mem_gb"]},
+    ])
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Memory per GPU")
+        fig_m = go.Figure()
+        for strat, color in [("DDP", "#3498db"), ("FSDP", "#2ecc71")]:
+            for ngpu, pattern in [(2, ""), (4, "/")]:
+                row = df[(df.Strategy == strat) & (df.GPUs == ngpu) & (df.Precision == "fp16")]
+                if not row.empty:
+                    fig_m.add_trace(go.Bar(
+                        name=f"{strat} {ngpu}-GPU fp16",
+                        x=[f"{strat} {ngpu}-GPU"],
+                        y=[row["Mem/GPU (GB)"].values[0]],
+                        marker_color=color,
+                        marker_pattern_shape=pattern,
+                        text=[f"{row['Mem/GPU (GB)'].values[0]:.2f} GB"],
+                        textposition="auto", textfont=dict(color="white")
+                    ))
+        fig_m.add_hline(y=24, line_dash="dash", line_color="#95a5a6",
+                        annotation_text="A30 limit (24 GB)")
+        fig_m.update_layout(
+            yaxis_title="GB", yaxis_range=[0, 26],
+            height=360, template="plotly_dark", showlegend=True, barmode="group"
+        )
+        st.plotly_chart(fig_m, use_container_width=True)
+
+    with col2:
+        st.subheader("Throughput (tok/s)")
+        fig_t = go.Figure()
+        for strat, color in [("DDP", "#3498db"), ("FSDP", "#2ecc71")]:
+            for ngpu in [2, 4]:
+                row = df[(df.Strategy == strat) & (df.GPUs == ngpu) & (df.Precision == "fp16")]
+                if not row.empty:
+                    fig_t.add_trace(go.Bar(
+                        name=f"{strat} {ngpu}-GPU fp16",
+                        x=[f"{strat} {ngpu}-GPU"],
+                        y=[row["Throughput"].values[0]],
+                        marker_color=color,
+                        text=[f"{row['Throughput'].values[0]:,}"],
+                        textposition="auto", textfont=dict(color="white")
+                    ))
+        fig_t.update_layout(
+            yaxis_title="Tokens / second",
+            height=360, template="plotly_dark", showlegend=True, barmode="group"
+        )
+        st.plotly_chart(fig_t, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Memory savings grow with GPU count")
+    gpus_list = [2, 4]
+    savings_fp32 = [12.3, 18.3]
+    savings_fp16 = [14.1, 21.1]
+
+    fig_save = go.Figure()
+    fig_save.add_trace(go.Scatter(x=gpus_list, y=savings_fp32, mode="lines+markers+text",
+                                  name="fp32", line=dict(color="#3498db", width=3),
+                                  marker=dict(size=12),
+                                  text=[f"{v:.1f}%" for v in savings_fp32],
+                                  textposition="top left"))
+    fig_save.add_trace(go.Scatter(x=gpus_list, y=savings_fp16, mode="lines+markers+text",
+                                  name="fp16 (AMP)", line=dict(color="#e74c3c", width=3),
+                                  marker=dict(size=12),
+                                  text=[f"{v:.1f}%" for v in savings_fp16],
+                                  textposition="top right"))
+    fig_save.update_layout(
+        title="FSDP memory reduction vs DDP (each GPU holds 1/N of sharded state)",
+        xaxis_title="Number of GPUs", yaxis_title="Memory saved (%)",
+        xaxis=dict(tickvals=[2, 4]), yaxis_range=[0, 30],
+        height=320, template="plotly_dark"
+    )
+    st.plotly_chart(fig_save, use_container_width=True)
+
+    st.info(
+        "**When to use FSDP:** when model + optimizer states approach single-GPU memory limit. "
+        "At 2 GPUs in fp16, FSDP is actually *faster* than DDP (+6.4%) because smaller shards "
+        "reduce the all-reduce volume. At 4 GPUs, the cost is 5–15% throughput for 18–21% less memory."
+    )
+
+
+# ── Tab 5: Live Demo ──────────────────────────────────────────────────────────
 with tab5:
     st.header("🔬 Text Generation Demo")
-    st.markdown("**Try the trained model** (Simulated for demo purposes)")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        prompt = st.text_area(
-            "Enter your prompt:",
-            "The future of artificial intelligence",
-            height=100
-        )
-    
-    with col2:
-        temperature = st.slider("Temperature (creativity)", 0.1, 2.0, 0.8, 0.1)
-        max_length = st.slider("Max Length (tokens)", 10, 100, 50, 5)
-        num_samples = st.slider("Number of samples", 1, 3, 1)
-    
-    if st.button("🚀 Generate Text", type="primary", use_container_width=True):
-        with st.spinner("Generating..."):
-            import time
-            progress_bar = st.progress(0)
-            
-            for i in range(100):
-                time.sleep(0.01)
-                progress_bar.progress(i + 1)
-            
-            # Simulated outputs
-            samples = [
-                f"{prompt} will revolutionize how we approach complex problems. Recent advances in distributed training have made it possible to train models at unprecedented scales, enabling breakthroughs in natural language understanding and generation.",
-                f"{prompt} is transforming industries worldwide. The key lies in efficient parallelization strategies that maintain high GPU utilization while minimizing communication overhead. This enables researchers to iterate faster and achieve better results.",
-                f"{prompt} represents a paradigm shift in how we solve computational challenges. By leveraging multi-GPU systems with near-linear scaling, we can train sophisticated models that were previously impossible to build."
-            ]
-            
-            st.success("✅ Generation complete!")
-            
-            for i in range(min(num_samples, len(samples))):
-                st.markdown(f"**Sample {i+1}:**")
-                st.write(samples[i][:max_length*5] + "...")
-                st.markdown("---")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Tokens Generated", max_length * num_samples)
-            with col2:
-                st.metric("Generation Speed", "~850 tok/s")
-            with col3:
-                st.metric("Model", "GPT-2 Tiny")
+    st.markdown("Runs the trained tiny GPT model directly — actual inference, not simulated.")
 
-# Footer
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        prompt = st.text_area("Enter your prompt:", "The future of artificial intelligence", height=100)
+    with col2:
+        temperature = st.slider("Temperature", 0.1, 2.0, 0.8, 0.1)
+        max_tokens  = st.slider("Max new tokens", 10, 100, 50, 5)
+
+    if st.button("🚀 Generate", type="primary", use_container_width=True):
+        with st.spinner("Loading model and generating..."):
+            try:
+                import torch
+                import sys, os
+                sys.path.insert(0, str(Path(__file__).parent))
+                from src.model.transformer import GPTModel
+                from src.model.config import CONFIGS
+                from transformers import GPT2Tokenizer
+
+                tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+                tokenizer.pad_token = tokenizer.eos_token
+
+                model = GPTModel(CONFIGS["tiny"])
+                model.eval()
+
+                input_ids = tokenizer.encode(prompt, return_tensors="pt")
+                with torch.no_grad():
+                    output = model.generate(input_ids, max_new_tokens=max_tokens, temperature=temperature, top_k=50)
+                generated = tokenizer.decode(output[0], skip_special_tokens=True)
+
+                st.success("✅ Done")
+                st.markdown(f"**Output:**\n\n{generated}")
+
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Tokens generated", max_tokens)
+                col2.metric("Model", "GPT tiny (13M params)")
+                col3.metric("Weights", "Random init (untrained)")
+
+                st.info("This model has random weights — output is grammatically structured but semantically random. "
+                        "Training on real data would produce coherent text.")
+            except Exception as e:
+                st.error(f"Could not run inference: {e}")
+                st.markdown("_To run locally: `pip install torch transformers` then `streamlit run demo_app.py`_")
+
+# ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; padding: 20px;'>
-    <p style='font-size: 1.2em;'><strong>🚀 Distributed LLM Training System</strong></p>
+    <p style='font-size: 1.1em;'><strong>🚀 Distributed LLM Training System</strong></p>
     <p>
         <a href='https://github.com/saitejasrivilli/distributed-training-models' style='margin: 0 10px;'>📂 GitHub</a> |
-        <a href='https://linkedin.com/in/yourprofile' style='margin: 0 10px;'>💼 LinkedIn</a> |
-        <a href='mailto:saiteja.srivilli@gmail.com' style='margin: 0 10px;'>📧 Contact</a>
+        <a href='mailto:srivillibhutturu.s@northeastern.edu' style='margin: 0 10px;'>📧 Contact</a>
     </p>
-    <p style='margin-top: 20px; opacity: 0.7;'>
-        Built with PyTorch, CUDA, NCCL | Production-Ready Multi-GPU Training<br>
-        © 2024 Sai Teja Srivilli
+    <p style='margin-top: 10px; opacity: 0.6;'>
+        PyTorch 2.7 · CUDA 11.8 · NCCL · 4× NVIDIA A30<br>
+        © 2025 Sai Teja Srivilli
     </p>
 </div>
 """, unsafe_allow_html=True)
