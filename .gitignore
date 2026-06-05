@@ -50,3 +50,9 @@ tensorboard/
 .DS_Store
 Thumbs.db
 experiments/*/checkpoints/*.pt
+
+# Claude Code local settings (personal, not for team)
+.claude/settings.local.json
+
+# Installers
+Miniconda3-*.sh
