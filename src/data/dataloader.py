@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import Dataset, DataLoader, DistributedSampler
+from torch.utils.data.dataloader import default_collate
 from datasets import load_dataset
 from transformers import GPT2Tokenizer
 import os
@@ -59,6 +60,10 @@ def get_dataloader(config, rank=0, world_size=1):
             streaming=False
         )
     
+    # Filter out empty/whitespace-only texts (wikitext has many blank lines)
+    dataset = dataset.filter(lambda x: x['text'] is not None and len(x['text'].strip()) > 0)
+    print(f"  Filtered dataset size: {len(dataset)} samples")
+
     # Take only a subset for quick testing if specified
     if 'max_samples' in config['data']:
         max_samples = config['data']['max_samples']
@@ -86,6 +91,12 @@ def get_dataloader(config, rank=0, world_size=1):
             shuffle=True
         )
     
+    def collate_fn(batch):
+        return {
+            'input_ids': torch.stack([x['input_ids'] for x in batch]),
+            'labels': torch.stack([x['labels'] for x in batch])
+        }
+
     # Create dataloader
     dataloader = DataLoader(
         train_dataset,
@@ -93,7 +104,8 @@ def get_dataloader(config, rank=0, world_size=1):
         sampler=sampler,
         shuffle=(sampler is None),
         num_workers=config['data']['num_workers'],
-        pin_memory=True
+        pin_memory=True,
+        collate_fn=collate_fn
     )
     
     return dataloader, tokenizer

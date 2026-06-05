@@ -17,7 +17,7 @@ training:
   save_every: 1000
 
 data:
-  dataset_name: "wikitext"
+  dataset_name: "Salesforce/wikitext"
   dataset_config: "wikitext-103-raw-v1"  # Larger dataset
   tokenizer: "gpt2"
   max_seq_len: 512

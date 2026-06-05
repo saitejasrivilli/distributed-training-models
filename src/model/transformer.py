@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint as gradient_checkpoint
 from .attention import MultiHeadAttention
 from .config import ModelConfig
 
@@ -39,24 +40,25 @@ class TransformerBlock(nn.Module):
 class GPTModel(nn.Module):
     """GPT-style transformer language model"""
     
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig, use_gradient_checkpointing: bool = False):
         super().__init__()
         self.config = config
-        
+        self.use_gradient_checkpointing = use_gradient_checkpointing
+
         self.token_embed = nn.Embedding(config.vocab_size, config.d_model)
         self.pos_embed = nn.Embedding(config.max_seq_len, config.d_model)
         self.dropout = nn.Dropout(config.dropout)
-        
+
         self.blocks = nn.ModuleList([
             TransformerBlock(config) for _ in range(config.n_layers)
         ])
-        
+
         self.ln_f = nn.LayerNorm(config.d_model)
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
         self.lm_head.weight = self.token_embed.weight
-        
+
         self.apply(self._init_weights)
-        
+
         print(f"Model initialized with {self.config.n_params:,} parameters")
     
     def _init_weights(self, module):
@@ -80,7 +82,10 @@ class GPTModel(nn.Module):
         x = self.dropout(tok_emb + pos_emb)
         
         for block in self.blocks:
-            x = block(x)
+            if self.use_gradient_checkpointing and self.training:
+                x = gradient_checkpoint(block, x, use_reentrant=False)
+            else:
+                x = block(x)
         
         x = self.ln_f(x)
         logits = self.lm_head(x)

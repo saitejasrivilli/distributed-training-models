@@ -77,16 +77,53 @@ def main():
     
     # Create model
     model_config = CONFIGS[config['model']['name']]
-    model = GPTModel(model_config)
+    use_gc = config['model'].get('use_gradient_checkpointing', False)
+    model = GPTModel(model_config, use_gradient_checkpointing=use_gc)
     model = model.to(device)
     
     if is_main:
         print(f"\n📊 Model: {config['model']['name']}")
         print(f"Parameters: {model_config.n_params:,}")
     
-    # Wrap with DDP
+    # Wrap with parallelism strategy
     if world_size > 1:
-        model = DDP(model, device_ids=[local_rank])
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+        from torch.distributed.fsdp import ShardingStrategy
+        from src.parallelism import convert_linear_to_tensor_parallel, split_model_pipeline
+
+        strategy = config['distributed'].get('strategy', 'ddp').lower()
+
+        if strategy == 'fsdp':
+            model = FSDP(
+                model,
+                device_id=local_rank,
+                sharding_strategy=ShardingStrategy.FULL_SHARD,
+                auto_wrap_policy=None,
+            )
+            if is_main:
+                print("Using FSDP (Fully Sharded Data Parallel)")
+
+        elif strategy == 'tensor':
+            model = convert_linear_to_tensor_parallel(model, world_size=world_size, rank=local_rank)
+            model = DDP(model, device_ids=[local_rank])
+            if is_main:
+                print("Using Tensor Parallelism (Column-wise Linear Sharding)")
+
+        elif strategy == 'pipeline':
+            model = split_model_pipeline(model, world_size=world_size, rank=local_rank)
+            if is_main:
+                print("Using Pipeline Parallelism (Layer-wise Model Sharding)")
+
+        elif strategy == 'tensor_pipeline':
+            model = convert_linear_to_tensor_parallel(model, world_size=world_size, rank=local_rank)
+            model = split_model_pipeline(model, world_size=world_size, rank=local_rank)
+            if is_main:
+                print("Using Tensor + Pipeline Parallelism (Hybrid)")
+
+        else:
+            model = DDP(model, device_ids=[local_rank])
+            if is_main:
+                print("Using DDP (Distributed Data Parallel)")
     
     # Create dataloader
     if is_main:
@@ -112,7 +149,7 @@ def main():
             
             # Save final checkpoint
             save_checkpoint(
-                model.module if world_size > 1 else model,
+                model,
                 trainer.optimizer,
                 trainer.step,
                 trainer.current_loss,
@@ -141,7 +178,7 @@ def main():
         if is_main:
             print("\n⚠️  Training interrupted by user")
             save_checkpoint(
-                model.module if world_size > 1 else model,
+                model,
                 trainer.optimizer,
                 trainer.step,
                 trainer.current_loss,

@@ -10,7 +10,7 @@ def save_checkpoint(model, optimizer, step, loss, output_dir, rank=0):
     checkpoint_dir = Path(output_dir) / 'checkpoints'
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     
-    # Get model state dict (unwrap DDP if needed)
+    # Get model state dict (unwrap DDP/FSDP if needed)
     if hasattr(model, 'module'):
         model_state = model.module.state_dict()
     else:
