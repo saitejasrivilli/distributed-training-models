@@ -1,0 +1,61 @@
+# Multi-node FSDP: 4 nodes × 4 GPUs = 16-GPU world
+# Effective batch = 8 × 8 × 16 = 1024 (same tokens/step; scales compute not batch size)
+#
+# At 16 GPUs with FULL_SHARD: each GPU holds ~1/16 of model params.
+# A 7B model (14 GB bf16) fits within a single 24 GB A30 in this config.
+#
+# Expected scaling (measured on 4×A30 baseline, projected):
+#   4 GPU → 16 GPU: ~3.5x throughput (90% efficiency accounts for NCCL overhead)
+#   Memory per GPU: -75% vs single-GPU (FULL_SHARD)
+
+model:
+  name: "medium"                       # 345M GPT-style, or extend for 7B LLM
+  use_flash_attention: true
+  use_gradient_checkpointing: true
+
+training:
+  batch_size: 2048
+  micro_batch_size: 8
+  gradient_accumulation_steps: 16
+
+  learning_rate: 1.0e-3               # scaled for 16-GPU: lr_base * sqrt(16)
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  grad_clip: 1.0
+
+  warmup_steps: 2000
+  max_steps: 100000
+  mixed_precision_training: true
+
+  save_every: 5000
+  eval_every: 1000
+  log_every: 50
+
+data:
+  dataset_name: "Salesforce/wikitext"
+  dataset_config: "wikitext-103-raw-v1"
+  tokenizer: "gpt2"
+  max_seq_len: 2048
+  num_workers: 4
+
+distributed:
+  strategy: "fsdp"
+  sharding_strategy: "FULL_SHARD"
+  backend: "nccl"
+  auto_wrap_min_params: 1_000_000
+  cpu_offload: false
+  # InfiniBand preferred for 4+ nodes; set to eth0 for Ethernet clusters
+  nccl_socket_ifname: "ib0"
+  nccl_ib_disable: 0                  # 0 = use InfiniBand; 1 = force Ethernet
+  nccl_timeout_min: 60                # increase for large AllReduce operations
+
+logging:
+  project: "distributed-llm-training"
+  run_name: "gpt-medium-4node-16gpu-fsdp"
+  log_with: "none"
+
+compute:
+  seed: 42
+  num_nodes: 4
+  gpus_per_node: 4

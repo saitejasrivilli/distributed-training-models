@@ -1,0 +1,64 @@
+# Multi-node FSDP: 2 nodes × 4 GPUs = 8-GPU world
+# Each node runs 4 processes (one per GPU).
+# Global batch = micro_batch_size × grad_accum_steps × world_size = 8 × 16 × 8 = 1024 tokens/step
+#
+# Launch with:
+#   sbatch scripts/launch/slurm_2node_fsdp.sh
+# or manually:
+#   NODE0: torchrun --nnodes=2 --nproc_per_node=4 --node_rank=0 \
+#            --master_addr=<NODE0_IP> --master_port=29500 train.py --config configs/multi_node/fsdp_2node_8gpu.yaml
+#   NODE1: torchrun --nnodes=2 --nproc_per_node=4 --node_rank=1 \
+#            --master_addr=<NODE0_IP> --master_port=29500 train.py --config configs/multi_node/fsdp_2node_8gpu.yaml
+
+model:
+  name: "small"                        # 117M GPT-style model
+  use_flash_attention: true
+  use_gradient_checkpointing: true
+
+training:
+  batch_size: 1024
+  micro_batch_size: 8
+  gradient_accumulation_steps: 16     # 8 × 16 × 8 GPUs = 1024 effective batch
+
+  learning_rate: 6.0e-4               # scaled: lr_base * sqrt(world_size)
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  grad_clip: 1.0
+
+  warmup_steps: 2000
+  max_steps: 100000
+
+  mixed_precision_training: true      # bf16 recommended on A100/A30
+
+  save_every: 5000
+  eval_every: 1000
+  log_every: 100
+
+data:
+  dataset_name: "Salesforce/wikitext"
+  dataset_config: "wikitext-103-raw-v1"
+  tokenizer: "gpt2"
+  max_seq_len: 2048
+  num_workers: 4
+
+distributed:
+  strategy: "fsdp"
+  sharding_strategy: "FULL_SHARD"     # ShardingStrategy.FULL_SHARD — parameters + grads + optimizer sharded
+  backend: "nccl"
+  # FSDP wrapping policy: wrap every transformer block (auto_wrap_policy)
+  auto_wrap_min_params: 1_000_000     # wrap any module with > 1M params
+  cpu_offload: false                  # enable for models that don't fit in GPU VRAM
+  # NCCL tuning for inter-node (Ethernet/InfiniBand)
+  nccl_socket_ifname: "eth0"          # adjust to your cluster's interface (ib0 for InfiniBand)
+  nccl_timeout_min: 30
+
+logging:
+  project: "distributed-llm-training"
+  run_name: "gpt-small-2node-8gpu-fsdp"
+  log_with: "none"
+
+compute:
+  seed: 42
+  num_nodes: 2
+  gpus_per_node: 4

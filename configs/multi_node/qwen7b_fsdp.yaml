@@ -1,0 +1,78 @@
+# Qwen2.5-7B post-training with FSDP across 2+ nodes
+# Model: 7.6B params, bf16 = 15.2 GB weights per GPU without sharding
+# With FULL_SHARD on 8 GPUs: ~1.9 GB weights/GPU + activations + KV cache
+#
+# Memory breakdown per GPU (8-GPU FSDP):
+#   Weights:    15.2 GB / 8 = 1.9 GB
+#   Gradients:  1.9 GB (same shard)
+#   Optimizer:  3.8 GB (AdamW: 2× param shard in fp32)
+#   Activations: ~2–4 GB (depends on seq_len + batch; gc helps)
+#   TOTAL:      ~10 GB per GPU → fits A30 24 GB with room for batch
+#
+# Without gradient checkpointing, activations scale as O(batch × seq × layers).
+# Enable for seq_len > 1024 or batch_size > 2.
+
+model:
+  name: "qwen2.5-7b"
+  hf_model_id: "Qwen/Qwen2.5-7B-Instruct"
+  use_flash_attention: true
+  use_gradient_checkpointing: true   # required for 7B at seq_len=2048
+
+training:
+  batch_size: 64
+  micro_batch_size: 2
+  gradient_accumulation_steps: 4    # effective batch = 2 × 4 × 8 GPUs = 64
+
+  learning_rate: 1.0e-5             # lower for fine-tuning (vs pre-training)
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.999
+  grad_clip: 1.0
+
+  warmup_steps: 100
+  max_steps: 2000
+  mixed_precision_training: true    # bf16 (bfloat16 preferred over fp16 for 7B)
+  bf16: true
+
+  save_every: 500
+  eval_every: 200
+  log_every: 20
+
+data:
+  dataset_name: "HuggingFaceH4/ultrachat_200k"
+  dataset_config: "default"
+  tokenizer: "Qwen/Qwen2.5-7B-Instruct"
+  max_seq_len: 2048
+  num_workers: 4
+
+distributed:
+  strategy: "fsdp"
+  sharding_strategy: "FULL_SHARD"
+  backend: "nccl"
+  # Wrap policy: every Qwen2DecoderLayer gets its own FSDP unit
+  auto_wrap_policy: "transformer_layer"
+  transformer_layer_cls: "Qwen2DecoderLayer"
+  cpu_offload: false
+  # Activation checkpointing is handled at the model level via
+  # model.gradient_checkpointing_enable() — FSDP activations are not sharded.
+  nccl_socket_ifname: "eth0"
+  nccl_timeout_min: 60
+
+lora:
+  # Optional: combine FSDP + LoRA to reduce optimizer state size
+  # When enabled, only LoRA params are trained; wrap FSDP around base layers
+  enabled: false
+  r: 16
+  alpha: 32
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  dropout: 0.05
+
+logging:
+  project: "distributed-llm-training"
+  run_name: "qwen2.5-7b-fsdp-8gpu"
+  log_with: "none"
+
+compute:
+  seed: 42
+  num_nodes: 2
+  gpus_per_node: 4

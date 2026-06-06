@@ -240,6 +240,59 @@ model = PipelineParallelModel(model, world_size=world_size, rank=rank)
 
 ---
 
+## 🌐 Multi-Node FSDP
+
+Extends single-node FSDP to clusters via `torchrun` distributed rendezvous.
+NCCL handles inter-node AllReduce; FSDP shards parameters, gradients, and
+optimizer states across all GPUs in the world (2 nodes × 4 GPUs = 8-way shard).
+
+### Memory projection: Qwen2.5-7B on 2 nodes × 4 GPUs
+
+| Component | 1 GPU (no FSDP) | 8 GPU FSDP (FULL_SHARD) |
+|-----------|----------------|------------------------|
+| Weights (bf16) | 15.2 GB | **1.9 GB/GPU** |
+| Gradients | 15.2 GB | **1.9 GB/GPU** |
+| Optimizer (AdamW fp32) | 30.4 GB | **3.8 GB/GPU** |
+| Activations (seq=2048) | ~4 GB | ~4 GB/GPU |
+| **Total** | **64.8 GB** | **~12 GB/GPU** → fits A30 24 GB |
+
+Without multi-node FSDP, Qwen2.5-7B cannot be fine-tuned on a 24 GB GPU
+(weights alone exceed memory). 8-way FSDP makes it feasible with room for
+batch_size=2.
+
+### SLURM launch (2 nodes)
+
+```bash
+sbatch scripts/launch/slurm_2node_fsdp.sh
+# → srun torchrun --nnodes=2 --nproc_per_node=4 --node_rank=$SLURM_NODEID ...
+```
+
+### Manual launch (no SLURM)
+
+```bash
+# Node 0 (master, IP = 192.168.1.10):
+MASTER_ADDR=192.168.1.10 NODE_RANK=0 NNODES=2 \
+  bash scripts/launch/torchrun_multi_node.sh
+
+# Node 1 (worker):
+MASTER_ADDR=192.168.1.10 NODE_RANK=1 NNODES=2 \
+  bash scripts/launch/torchrun_multi_node.sh
+```
+
+### Key changes vs single-node
+
+| Setting | Single-node | Multi-node |
+|---------|-------------|------------|
+| torchrun | `--standalone` | `--nnodes=N --node_rank=K --master_addr=...` |
+| Rendezvous | automatic | `--rdzv_backend=c10d --rdzv_endpoint=MASTER:PORT` |
+| NCCL | intra-node NVLink/PCIe | inter-node Ethernet (`eth0`) or InfiniBand (`ib0`) |
+| RANK env | 0…(gpus-1) | 0…(N×gpus-1) global; LOCAL_RANK resets per node |
+| Timeout | default 10 min | `NCCL_TIMEOUT=1800` for large AllReduce |
+
+Configs: [`configs/multi_node/`](configs/multi_node/) — 2-node 8-GPU, 4-node 16-GPU, Qwen2.5-7B FSDP.
+
+---
+
 ## 🏗️ System Architecture
 
 ```
