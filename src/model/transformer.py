@@ -59,7 +59,8 @@ class GPTModel(nn.Module):
 
         self.apply(self._init_weights)
 
-        print(f"Model initialized with {self.config.n_params:,} parameters")
+        actual = sum(p.numel() for p in self.parameters())
+        print(f"Model initialized with {actual:,} parameters")
     
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):

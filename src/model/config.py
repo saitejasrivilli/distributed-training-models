@@ -24,18 +24,20 @@ class ModelConfig:
     
     @property
     def n_params(self) -> int:
-        """Calculate approximate number of parameters"""
-        params = (
-            self.vocab_size * self.d_model +
-            self.max_seq_len * self.d_model +
-            self.n_layers * (
-                4 * self.d_model * self.d_model +
-                2 * self.d_model * self.d_ff +
-                5 * self.d_model
-            ) +
-            self.vocab_size * self.d_model
+        """Exact parameter count matching the GPTModel architecture (weight-tied embeddings)."""
+        per_layer = (
+            4 * self.d_model * self.d_model  # attn weights: q, k, v, out
+            + 4 * self.d_model               # attn biases:  q, k, v, out
+            + 2 * self.d_model * self.d_ff   # FFN weights:  fc1, fc2
+            + self.d_ff + self.d_model       # FFN biases:   fc1, fc2
+            + 4 * self.d_model               # ln1 + ln2: weight + bias each
         )
-        return params
+        return (
+            self.vocab_size * self.d_model   # token_embed (= lm_head, weight-tied)
+            + self.max_seq_len * self.d_model # pos_embed
+            + self.n_layers * per_layer
+            + 2 * self.d_model               # ln_f (final LayerNorm: weight + bias)
+        )
 
 # Predefined model sizes
 CONFIGS = {
