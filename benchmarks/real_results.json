@@ -7,7 +7,7 @@
     "peak_mem_gb": 5.21,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu1_single_fp16": {
     "strategy": "none",
@@ -17,7 +17,7 @@
     "peak_mem_gb": 4.56,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu2_ddp_fp32": {
     "strategy": "ddp",
@@ -27,7 +27,7 @@
     "peak_mem_gb": 5.67,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu2_ddp_fp16": {
     "strategy": "ddp",
@@ -37,7 +37,7 @@
     "peak_mem_gb": 5.02,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu2_fsdp_fp32": {
     "strategy": "fsdp",
@@ -47,7 +47,7 @@
     "peak_mem_gb": 4.97,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu2_fsdp_fp16": {
     "strategy": "fsdp",
@@ -57,7 +57,7 @@
     "peak_mem_gb": 4.31,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu4_ddp_fp32": {
     "strategy": "ddp",
@@ -67,7 +67,7 @@
     "peak_mem_gb": 5.67,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu4_ddp_fp16": {
     "strategy": "ddp",
@@ -77,7 +77,7 @@
     "peak_mem_gb": 5.02,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu4_fsdp_fp32": {
     "strategy": "fsdp",
@@ -87,7 +87,7 @@
     "peak_mem_gb": 4.63,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu4_fsdp_fp16": {
     "strategy": "fsdp",
@@ -97,7 +97,7 @@
     "peak_mem_gb": 3.96,
     "batch_per_gpu": 4,
     "seq_len": 512,
-    "model_params": 163748352
+    "model_params": 125226240
   },
   "gpu2_tp_fp32": {
     "strategy": "tp",

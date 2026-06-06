@@ -103,9 +103,20 @@ torchrun --nproc_per_node=4 run_tp_pp_benchmark.py
 
 ---
 
+## Tests
+
+```bash
+# Fast unit tests — no GPU cluster needed
+pytest test_train.py tests/ -v
+```
+
+7 tests pass: model creation, forward/backward pass, CUDA availability, YAML config loading, parameter count accuracy (config formula matches actual model).
+
+---
+
 ## 📊 Real Benchmark Results
 
-> Measured on **NVIDIA A30 GPUs (PCIe)**, **163M-param GPT model**, batch=4/GPU, seq_len=512.  
+> Measured on **NVIDIA A30 GPUs (PCIe)**, **125M-param GPT model**, batch=4/GPU, seq_len=512.  
 > All numbers from `benchmarks/real_results.json`. No estimates.
 
 ### Option 2 — Mixed Precision Training (AMP)
@@ -121,7 +132,7 @@ fp16 AMP is the single highest-ROI optimization in this pipeline.
 | 4 GPU DDP — fp32 | 10,921 tok/s | 5.67 GB/GPU | 1.32× |
 | **4 GPU DDP — fp16 AMP** | **20,950 tok/s** | **5.02 GB/GPU** | **2.52×** |
 
-**Key insight:** AMP delivers **3.14× throughput** on a single A30 GPU — more than doubling the benefit of adding a second GPU at this model scale. For a 163M model on PCIe-connected GPUs, AMP is the highest-ROI optimization.
+**Key insight:** AMP delivers **3.14× throughput** on a single A30 GPU — more than doubling the benefit of adding a second GPU at this model scale. For a 125M model on PCIe-connected GPUs, AMP is the highest-ROI optimization.
 
 ### Option 1 — DDP vs FSDP: Memory & Throughput Tradeoff
 
@@ -145,7 +156,7 @@ FSDP shards model parameters, gradients, and optimizer states across GPUs. Each 
 
 ### DDP Scaling Efficiency
 
-Honest numbers for PCIe-connected A30 GPUs at 163M params:
+Honest numbers for PCIe-connected A30 GPUs at 125M params:
 
 | GPUs | Strategy | Precision | Total Throughput | Speedup vs 1-GPU fp32 | Parallel Efficiency |
 |------|----------|-----------|-----------------|----------------------|---------------------|
@@ -156,7 +167,7 @@ Honest numbers for PCIe-connected A30 GPUs at 163M params:
 | 4 | DDP | fp32 | 10,921 tok/s | 1.32× | 32.9% |
 | 4 | DDP | fp16 | 20,950 tok/s | 2.52× | — |
 
-**Why efficiency is low:** A30 GPUs here are PCIe-connected (no NVLink). Each DDP step all-reduces ~650 MB of fp32 gradients across GPUs. At 163M params, the compute-to-communication ratio is unfavorable — DDP efficiency typically improves significantly with larger models (>1B params) or NVLink interconnects, where compute dominates communication.
+**Why efficiency is low:** A30 GPUs here are PCIe-connected (no NVLink). Each DDP step all-reduces ~650 MB of fp32 gradients across GPUs. At 125M params, the compute-to-communication ratio is unfavorable — DDP efficiency typically improves significantly with larger models (>1B params) or NVLink interconnects, where compute dominates communication.
 
 ---
 
@@ -187,9 +198,9 @@ model = convert_linear_to_tensor_parallel(
 | 2 | fp16 | 10,476 tok/s | 4.04 GB | **0.40×** |
 | 4 | fp16 | 3,820 tok/s | 3.72 GB | **0.15×** |
 
-**Why throughput drops with more GPUs:** The 163M-param GPT-small has 12 blocks × 4 linear layers = **48 all_gather operations per forward pass** (plus 48 all_reduce on input gradients in backward). On PCIe (effective bandwidth ~32 GB/s bidirectional), communication dominates computation at this model scale.
+**Why throughput drops with more GPUs:** The 125M-param GPT-small has 12 blocks × 4 linear layers = **48 all_gather operations per forward pass** (plus 48 all_reduce on input gradients in backward). On PCIe (effective bandwidth ~32 GB/s bidirectional), communication dominates computation at this model scale.
 
-**What TP is actually for:** Tensor parallelism is designed for models whose individual layers are too large to fit on a single GPU — e.g., a single attention projection of width 8192 in a 70B model. At that scale, each GPU holds 1/N of a massive weight matrix, and NVLink bandwidth (600+ GB/s) makes the all_gather fast relative to the matmul. On PCIe with a 163M model, TP is communication-bound.
+**What TP is actually for:** Tensor parallelism is designed for models whose individual layers are too large to fit on a single GPU — e.g., a single attention projection of width 8192 in a 70B model. At that scale, each GPU holds 1/N of a massive weight matrix, and NVLink bandwidth (600+ GB/s) makes the all_gather fast relative to the matmul. On PCIe with a 125M model, TP is communication-bound.
 
 ---
 
@@ -308,7 +319,7 @@ training:
 
 ## 📈 Full Configuration Summary
 
-All 18 configurations measured on 4× NVIDIA A30 (PCIe), 163M-param GPT, batch=4/GPU, seq=512.
+All 18 configurations measured on 4× NVIDIA A30 (PCIe), 125M-param GPT, batch=4/GPU, seq=512.
 
 | Strategy | GPUs | Precision | Throughput | Mem/GPU | Best For |
 |----------|------|-----------|-----------|---------|----------|
@@ -362,7 +373,7 @@ All 18 configurations measured on 4× NVIDIA A30 (PCIe), 163M-param GPT, batch=4
 
 > "Extended distributed training system to compare DDP vs FSDP, measuring per-GPU memory reduction from sharding optimizer states across 4 GPUs — FSDP cuts memory 18–21% per GPU at 4-GPU scale; identified throughput tradeoff (5% at fp32, 15% at fp16) and the regime where FSDP outperforms DDP on memory-constrained hardware."
 
-> "Added automatic mixed precision (AMP) to the training loop using torch.amp; measured 3.14× throughput improvement (8,300 → 26,097 tok/s) on a 163M-param model on a single NVIDIA A30 — making AMP the highest-ROI optimization in the pipeline, ahead of adding a second GPU without AMP."
+> "Added automatic mixed precision (AMP) to the training loop using torch.amp; measured 3.14× throughput improvement (8,300 → 26,097 tok/s) on a 125M-param model on a single NVIDIA A30 — making AMP the highest-ROI optimization in the pipeline, ahead of adding a second GPU without AMP."
 
 > "Implemented column-wise tensor parallelism from scratch using a custom gradient-aware autograd Function for all_gather; measured 0.27× throughput at 4-GPU on PCIe-connected A30s, diagnosing that 48 collective operations per training step saturates PCIe bandwidth — explains why TP requires NVLink at production scale."
 

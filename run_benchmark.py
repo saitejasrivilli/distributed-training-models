@@ -79,7 +79,7 @@ def main():
         print(f"Batch/GPU={BATCH_SIZE}  seq_len={SEQ_LEN}  steps={NUM_STEPS}")
         print(f"{'='*60}")
 
-    model_cfg = CONFIGS['small']   # 117M-param model
+    model_cfg = CONFIGS['small']   # 125M-param model
     results   = {}
 
     configs = []
