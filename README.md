@@ -240,6 +240,69 @@ model = PipelineParallelModel(model, world_size=world_size, rank=rank)
 
 ---
 
+## MFU & Efficiency
+
+### What is MFU?
+
+Model FLOP Utilisation (MFU) measures what fraction of a GPU's theoretical peak compute is actually used for useful work:
+
+```
+achieved_flops = 6 × N × B × S / elapsed_seconds
+  N = total model parameters
+  B = global batch size (batch_per_GPU × world_size)
+  S = sequence length
+  factor 6 = 2 (fused multiply-add) × 3 (forward + backward + optimizer)
+
+mfu = achieved_flops / peak_flops_fp16
+```
+
+For an A30 PCIe GPU: `peak_flops_fp16 = 165 TFLOPS`.
+
+**Why MFU matters:** raw tok/s is hardware-specific and hard to compare across GPU types. MFU is a normalised efficiency number — 50% MFU on an A30 and 50% MFU on an H100 both mean "half the hardware is idle", regardless of absolute throughput. Production systems (PaLM, Chinchilla, Llama) report MFU to communicate training efficiency independent of hardware.
+
+### Why DDP underperforms at 4-GPU on A30 PCIe
+
+A30 GPUs in the UTA cluster are connected via PCIe, **not NVLink**:
+
+| Interconnect | Bandwidth | Gradient sync for 125M model |
+|---|---|---|
+| NVLink (A100 SXM) | ~600 GB/s | ~2.2 ms |
+| PCIe Gen4 (A30) | ~16 GB/s bidirectional effective | ~81 ms |
+
+At 125M parameters, a single DDP all-reduce synchronises ~500 MB of fp16 gradients. On PCIe this takes ~31 ms per step, while the forward+backward compute takes ~38 ms — so communication is ~45% of wall time. This is why 4-GPU DDP fp32 achieves only **1.32× speedup** (32.9% parallel efficiency) rather than the theoretical 4×. The same bottleneck explains why TP is communication-bound here.
+
+**At larger model scale (>1B params), the compute-to-communication ratio improves significantly**, and both DDP and TP become efficient even on PCIe. NVLink eliminates the bottleneck entirely.
+
+### MFU across configurations (125M GPT, batch=4/GPU, seq=512)
+
+| Config | MFU | tok/s | mem/GPU |
+|---|---|---|---|
+| 1-GPU fp32 | 0.5% | 8,300 | 5.21 GB |
+| 1-GPU fp16 AMP | 1.6% | 26,097 | 4.56 GB |
+| 4-GPU DDP fp16 | 1.3% | 20,950 | 5.02 GB |
+| 4-GPU FSDP fp16 | 1.1% | 17,840 | 3.96 GB |
+
+MFU is low across the board for a 125M model — this is expected. At this scale, the model is too small to saturate A30 Tensor Cores; kernel launch overhead and memory-bandwidth limits dominate. MFU scales up with model size: GPT-3 (175B) achieves ~46% MFU on A100 SXM because each matmul is large enough to fully utilise Tensor Cores.
+
+The fp16 AMP jump (0.5% → 1.6%) reflects the A30 Tensor Core throughput ratio (165 vs 10.3 TFLOPS) — fp16 is the native Tensor Core format.
+
+### Running the MFU benchmark
+
+```bash
+# Theoretical estimates (no GPU required)
+python scripts/benchmark_mfu.py --dry_run
+
+# Live single-GPU benchmark (100 steps each)
+python scripts/benchmark_mfu.py --steps 100
+
+# Reproduce multi-GPU rows
+torchrun --nproc_per_node=4 run_benchmark.py
+```
+
+The benchmark script (`scripts/benchmark_mfu.py`) trains for `--steps` steps per config, measures wall-clock time per step, and reports the MFU table above. The `--dry_run` flag prints theoretical estimates from `benchmarks/real_results.json` without touching the GPU.
+
+---
+
 ## 🌐 Multi-Node FSDP
 
 Extends single-node FSDP to clusters via `torchrun` distributed rendezvous.
