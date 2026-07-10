@@ -546,7 +546,7 @@ Built with PyTorch, inspired by Megatron-LM and nanoGPT.
 ## 📬 Contact
 
 **Sai Teja Srivilli**  
-📧 srivillibhutturu.s@northeastern.edu  
+📧 saiteja.srivilli@gmail.com  
 🐙 [GitHub](https://github.com/saitejasrivilli)  
 🎮 [Live Demo](https://distributed-training-models.streamlit.app/)
 
